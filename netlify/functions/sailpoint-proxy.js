@@ -181,18 +181,20 @@ async function getOrgInfo(tenantUrl, accessToken) {
 }
 
 // ── Action: get-identity-count ────────────────────────────────────────────────
+// v2025/identities requires X-SailPoint-Experimental: true
+// limit=1 + count=true — reads X-Total-Count header, downloads nothing
 async function getIdentityCount(tenantUrl, accessToken) {
   const apiBase = getApiBase(tenantUrl)
 
-  // Use X-Total-Count header — avoids downloading all records
   const res = await httpRequest(
-    `${apiBase}/v3/identities?limit=1&count=true`,
+    `${apiBase}/v2025/identities?limit=1&count=true`,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept:        'application/json',
+        Authorization:               `Bearer ${accessToken}`,
+        Accept:                      'application/json',
+        'X-SailPoint-Experimental': 'true',
       },
-      timeout: 10000,
+      timeout: 12000,
     }
   )
 
@@ -201,21 +203,65 @@ async function getIdentityCount(tenantUrl, accessToken) {
     return { count, raw: res.headers['x-total-count'] }
   }
 
-  throw new Error(`Identity count failed (HTTP ${res.status})`)
+  // Fallback: v3 search/count — no experimental header needed
+  const countBody = JSON.stringify({ indices: ['identities'], query: { query: '*' } })
+  const res2 = await httpRequest(`${apiBase}/v3/search/count`, {
+    method:  'POST',
+    headers: {
+      Authorization:    `Bearer ${accessToken}`,
+      Accept:           'application/json',
+      'Content-Type':  'application/json',
+      'Content-Length': Buffer.byteLength(countBody).toString(),
+    },
+    body:    countBody,
+    timeout: 12000,
+  })
+
+  if (res2.status === 204 || res2.status === 200) {
+    const count = parseInt(res2.headers['x-total-count'] || '0', 10)
+    return { count, source: 'search-count' }
+  }
+
+  throw new Error(`Identity count failed — v2025 HTTP ${res.status}, search/count HTTP ${res2.status}`)
 }
 
 // ── Action: get-va-clusters ───────────────────────────────────────────────────
+// v2025 API: GET /v2025/managed-clusters  (replaces /beta/cluster-configs)
+// X-SailPoint-Experimental: true required
 async function getVaClusters(tenantUrl, accessToken) {
   const apiBase = getApiBase(tenantUrl)
 
-  const res = await httpRequest(`${apiBase}/beta/cluster-configs?type=VA`, {
+  const res = await httpRequest(`${apiBase}/v2025/managed-clusters?filters=type+eq+%22VA%22`, {
+    headers: {
+      Authorization:               `Bearer ${accessToken}`,
+      Accept:                      'application/json',
+      'X-SailPoint-Experimental': 'true',
+    },
+    timeout: 12000,
+  })
+
+  if (res.status === 200) {
+    const clusters  = JSON.parse(res.body)
+    const vaCount   = clusters.length || 0
+    const unhealthy = clusters.filter(c =>
+      c.status && !['VALID','HEALTHY','ACTIVE','CONNECTED'].includes(c.status.toUpperCase())
+    ).length
+    return {
+      vaCount,
+      unhealthyCount: unhealthy,
+      clusters: clusters.map(c => ({ name: c.name, id: c.id, status: c.status, type: c.type })),
+    }
+  }
+
+  // Fallback: beta/cluster-configs (older tenants)
+  const res2 = await httpRequest(`${apiBase}/beta/cluster-configs?type=VA`, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
     timeout: 10000,
   })
 
-  if (res.status === 200) {
-    const clusters = JSON.parse(res.body)
-    const vaCount  = clusters.length || 0
+  if (res2.status === 200) {
+    const clusters  = JSON.parse(res2.body)
+    const vaCount   = clusters.length || 0
     const unhealthy = clusters.filter(c =>
       c.status && !['VALID','HEALTHY','ACTIVE'].includes(c.status.toUpperCase())
     ).length
@@ -223,7 +269,7 @@ async function getVaClusters(tenantUrl, accessToken) {
   }
 
   // Non-fatal — VA info optional
-  return { vaCount: 0, unhealthyCount: 0, clusters: [], note: `HTTP ${res.status}` }
+  return { vaCount: 0, unhealthyCount: 0, clusters: [], note: `v2025 HTTP ${res.status} / beta HTTP ${res2.status}` }
 }
 
 // ── Action: full-validation ───────────────────────────────────────────────────
@@ -409,6 +455,28 @@ exports.handler = async (event) => {
           return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'clientId and clientSecret required for full validation' }) }
         }
         result = await fullValidation(tenantUrl, clientId, clientSecret)
+        break
+
+      // Lightweight refresh — re-authenticates and fetches current identity count + VA status
+      // Used by the tenant list refresh button without re-running full validation
+      case 'refresh-counts':
+        if (!clientId || !clientSecret) {
+          return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'clientId and clientSecret required for refresh-counts' }) }
+        }
+        try {
+          const tok      = await getToken(tenantUrl, clientId, clientSecret)
+          const ic       = await getIdentityCount(tenantUrl, tok.accessToken)
+          const vaInfo   = await getVaClusters(tenantUrl, tok.accessToken)
+          result = {
+            success:      true,
+            identityCount: ic.count,
+            vaCount:       vaInfo.vaCount,
+            vaUnhealthy:   vaInfo.unhealthyCount,
+            refreshedAt:   new Date().toISOString(),
+          }
+        } catch (err) {
+          result = { success: false, error: err.message }
+        }
         break
 
       default:

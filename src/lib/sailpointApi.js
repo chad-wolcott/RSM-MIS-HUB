@@ -79,3 +79,11 @@ export async function isProxyAvailable() {
     return false
   }
 }
+
+/**
+ * Refresh identity count + VA status for an already-onboarded tenant.
+ * Lighter than full-validation — just re-auths and pulls current counts.
+ */
+export async function refreshTenantCounts({ tenantUrl, clientId, clientSecret }) {
+  return callProxy('refresh-counts', tenantUrl, { clientId, clientSecret })
+}
