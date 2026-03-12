@@ -62,15 +62,40 @@ function httpRequest(url, options = {}) {
   })
 }
 
+// ── Allowed ISC domains ───────────────────────────────────────────────────────
+// Standard SailPoint ISC, demo instances, and RSM vanity domain.
+const ALLOWED_DOMAINS = [
+  '.identitynow.com',
+  '.identitynow-demo.com',
+  '.rsm.security',
+]
+
+function isAllowedDomain(hostname) {
+  return ALLOWED_DOMAINS.some(d => hostname.endsWith(d))
+}
+
 // ── Derive API base URL from tenant URL ───────────────────────────────────────
-// Tenant URL:  https://org.identitynow.com
-// API base:    https://org.api.identitynow.com
+// Standard ISC tenants use a parallel *.api.identitynow.com subdomain:
+//   https://acme.identitynow.com      → https://acme.api.identitynow.com
+//   https://acme.identitynow-demo.com → https://acme.api.identitynow-demo.com
+//
+// RSM vanity URLs (*.rsm.security) host the API on the same origin — the
+// token endpoint lives at https://tenant.rsm.security/oauth/token with no
+// separate api.* subdomain. We return the base URL as-is.
 function getApiBase(tenantUrl) {
   try {
     const u    = new URL(tenantUrl)
-    const host = u.hostname // e.g. "acme.identitynow.com"
+    const host = u.hostname  // e.g. "acme.identitynow.com"
     const org  = host.split('.')[0]
-    return `https://${org}.api.identitynow.com`
+
+    if (host.endsWith('.identitynow.com')) {
+      return `https://${org}.api.identitynow.com`
+    }
+    if (host.endsWith('.identitynow-demo.com')) {
+      return `https://${org}.api.identitynow-demo.com`
+    }
+    // *.rsm.security — vanity / reverse-proxy, API on same origin
+    return `https://${host}`
   } catch {
     throw new Error(`Invalid tenant URL: ${tenantUrl}`)
   }
@@ -346,14 +371,16 @@ exports.handler = async (event) => {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'tenantUrl is required' }) }
   }
 
-  // Basic URL validation — must be identitynow.com domain
+  // Domain allowlist — *.identitynow.com, *.identitynow-demo.com, *.rsm.security
   try {
     const u = new URL(tenantUrl)
-    if (!u.hostname.endsWith('.identitynow.com') && !u.hostname.endsWith('.sailpoint.com')) {
+    if (!isAllowedDomain(u.hostname)) {
       return {
         statusCode: 400,
         headers: CORS,
-        body: JSON.stringify({ error: 'tenantUrl must be a valid SailPoint IdentityNow URL (*.identitynow.com)' }),
+        body: JSON.stringify({
+          error: `tenantUrl hostname "${u.hostname}" is not permitted. Allowed domains: *.identitynow.com, *.identitynow-demo.com, *.rsm.security`,
+        }),
       }
     }
   } catch {

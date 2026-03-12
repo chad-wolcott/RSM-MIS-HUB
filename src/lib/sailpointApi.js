@@ -41,14 +41,21 @@ export async function testISCConnectivity(tenantUrl) {
 }
 
 /**
- * Derive the API base URL from a tenant URL (client-side calculation,
- * mirrors what the proxy does — useful for display purposes).
+ * Derive the API base URL from a tenant URL — mirrors the proxy's getApiBase().
+ * *.identitynow.com      → *.api.identitynow.com
+ * *.identitynow-demo.com → *.api.identitynow-demo.com
+ * *.rsm.security         → same origin (vanity/reverse-proxy, no separate api.* host)
  */
 export function deriveApiBase(tenantUrl) {
   try {
-    const u   = new URL(tenantUrl)
-    const org = u.hostname.split('.')[0]
-    return `https://${org}.api.identitynow.com`
+    const u    = new URL(tenantUrl)
+    const host = u.hostname
+    const org  = host.split('.')[0]
+
+    if (host.endsWith('.identitynow.com'))      return `https://${org}.api.identitynow.com`
+    if (host.endsWith('.identitynow-demo.com')) return `https://${org}.api.identitynow-demo.com`
+    if (host.endsWith('.rsm.security'))         return `https://${host}`
+    return ''
   } catch {
     return ''
   }

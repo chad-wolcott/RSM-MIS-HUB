@@ -213,9 +213,11 @@ export default function Onboard() {
     }
     if (step === 2) {
       if (!validate([['tenantUrl','Tenant URL','url'],['apiEndpoint','API Endpoint URL','url']])) return
-      // ISC-specific: URL must be identitynow.com
-      if (form.tenantType === 'ISC' && !form.tenantUrl.includes('.identitynow.com')) {
-        setErrors({ tenantUrl: 'SailPoint ISC tenant URL must be *.identitynow.com' }); return
+      // ISC URL must match one of the allowed domains
+      const ALLOWED = ['.identitynow.com', '.identitynow-demo.com', '.rsm.security']
+      const urlHost = (() => { try { return new URL(form.tenantUrl).hostname } catch { return '' } })()
+      if (form.tenantType === 'ISC' && !ALLOWED.some(d => urlHost.endsWith(d))) {
+        setErrors({ tenantUrl: 'SailPoint ISC tenant URL must be *.identitynow.com, *.identitynow-demo.com, or *.rsm.security' }); return
       }
     }
     if (step === 3) {
@@ -450,7 +452,7 @@ export default function Onboard() {
           {step === 2 && (
             <div className="card">
               <div className="section-title">Tenant Connection Details</div>
-              <Field label="Tenant URL" required error={errors.tenantUrl} hint="The *.identitynow.com URL for this client's ISC instance">
+              <Field label="Tenant URL" required error={errors.tenantUrl} hint="Allowed: *.identitynow.com, *.identitynow-demo.com, *.rsm.security">
                 <input
                   className={`input${errors.tenantUrl?' input-error':''}`}
                   value={form.tenantUrl}
