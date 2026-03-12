@@ -532,9 +532,18 @@ html, body, #root {
   letter-spacing: 0.02em;
 }
 
+/* ── Resizable columns ──────────────────────────────────────────────────────
+   The useResizableColumns hook sets explicit pixel widths on each <th>.
+   table-layout: fixed is required to honour those widths.
+   The .resizable-table class is added by any table that opts in.
+   ──────────────────────────────────────────────────────────────────────── */
 table {
   width: 100%;
   border-collapse: collapse;
+}
+
+table.resizable-table {
+  table-layout: fixed;
 }
 
 th {
@@ -550,11 +559,22 @@ th {
   white-space: nowrap;
   cursor: pointer;
   user-select: none;
+  /* Column text should not bleed into the resize handle */
+  padding-right: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 th:hover { color: var(--text-2); }
+th:hover .resize-indicator { background: var(--border-strong, var(--accent)); }
 
 th.sorted { color: var(--accent); }
+
+/* Resize handle hover glow */
+th:hover .resize-indicator {
+  background: var(--accent) !important;
+  opacity: 0.6;
+}
 
 td {
   padding: 11px 14px;

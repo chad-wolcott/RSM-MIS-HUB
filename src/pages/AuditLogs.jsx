@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useResizableColumns } from '../lib/useResizableColumns.jsx'
 import { MOCK_AUDIT_LOGS } from '../data/mock'
 
 const EVENT_TYPES = ['All','LOGIN_SUCCESS','LOGIN_FAILED','TENANT_LAUNCH','TENANT_ONBOARD','CONFIG_CHANGE','ROLE_CHANGE','SESSION_TIMEOUT','LOGOUT']
@@ -42,6 +43,19 @@ export default function AuditLogs() {
 
   const totalPages = Math.ceil(filtered.length / pageSize)
   const paginated  = filtered.slice((page-1)*pageSize, page*pageSize)
+
+  // ── Resizable columns ──────────────────────────────────────────────────────
+  const AUDIT_COLS = [
+    { key: 'ts',      defaultWidth: 155 },
+    { key: 'event',   defaultWidth: 54  },
+    { key: 'user',    defaultWidth: 160 },
+    { key: 'tenant',  defaultWidth: 180 },
+    { key: 'outcome', defaultWidth: 90  },
+    { key: 'ip',      defaultWidth: 115 },
+    { key: 'detail',  defaultWidth: 280 },
+  ]
+  const { getThProps: auditThProps, ResizeHandle: AuditResizeHandle } = useResizableColumns(AUDIT_COLS, { storageKey: 'mih-audit-cols' })
+
 
   const exportCsv = () => {
     const header = 'Timestamp,User,Event Type,Tenant,Outcome,IP,Detail'
@@ -135,16 +149,16 @@ export default function AuditLogs() {
 
           {/* Table */}
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table className="resizable-table">
               <thead>
                 <tr>
-                  <th style={{ width: 155 }}>Timestamp</th>
-                  <th style={{ width: 50 }}>Event</th>
-                  <th>User</th>
-                  <th>Tenant</th>
-                  <th style={{ width: 80 }}>Outcome</th>
-                  <th style={{ width: 110 }}>IP Address</th>
-                  <th>Detail</th>
+                  <th {...auditThProps('ts')}>Timestamp<AuditResizeHandle col="ts"/></th>
+                  <th {...auditThProps('event')}>Event<AuditResizeHandle col="event"/></th>
+                  <th {...auditThProps('user')}>User<AuditResizeHandle col="user"/></th>
+                  <th {...auditThProps('tenant')}>Tenant<AuditResizeHandle col="tenant"/></th>
+                  <th {...auditThProps('outcome')}>Outcome<AuditResizeHandle col="outcome"/></th>
+                  <th {...auditThProps('ip')}>IP Address<AuditResizeHandle col="ip"/></th>
+                  <th {...auditThProps('detail')}>Detail<AuditResizeHandle col="detail"/></th>
                 </tr>
               </thead>
               <tbody>

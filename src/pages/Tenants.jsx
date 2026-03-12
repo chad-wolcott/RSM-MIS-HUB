@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { useResizableColumns } from '../lib/useResizableColumns.jsx'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_TENANTS } from '../data/mock'
 import { getLiveTenants, removeLiveTenant, updateLiveTenant } from '../lib/tenantStore'
@@ -621,6 +622,19 @@ export default function Tenants() {
     }
   }
 
+  // ── Resizable columns ────────────────────────────────────────────────────
+  const COLS = [
+    { key: 'source',      defaultWidth: 100 },
+    { key: 'client',      defaultWidth: 200 },
+    { key: 'type',        defaultWidth: 70  },
+    { key: 'health',      defaultWidth: 110 },
+    { key: 'vas',         defaultWidth: 80  },
+    { key: 'identities',  defaultWidth: 160 },
+    { key: 'url',         defaultWidth: 240 },
+    { key: 'actions',     defaultWidth: 170 },
+  ]
+  const { getThProps, ResizeHandle } = useResizableColumns(COLS, { storageKey: 'mih-tenants-cols' })
+
   const SortIcon = ({ col }) => {
     if (sortCol !== col) return <span style={{opacity:0.2,marginLeft:3}}>↕</span>
     return <span style={{marginLeft:3}}>{sortDir==='asc'?'↑':'↓'}</span>
@@ -704,17 +718,17 @@ export default function Tenants() {
 
           {/* Table */}
           <div style={{overflowX:'auto'}}>
-            <table>
+            <table className="resizable-table">
               <thead>
                 <tr>
-                  <th onClick={()=>sort('source')}  className={sortCol==='source'?'sorted':''} style={{width:90}}>Source <SortIcon col="source"/></th>
-                  <th onClick={()=>sort('client')}  className={sortCol==='client'?'sorted':''}>Client Name <SortIcon col="client"/></th>
-                  <th onClick={()=>sort('type')}    className={sortCol==='type'?'sorted':''} style={{width:70}}>Type <SortIcon col="type"/></th>
-                  <th onClick={()=>sort('health')}  className={sortCol==='health'?'sorted':''} style={{width:110}}>Health <SortIcon col="health"/></th>
-                  <th onClick={()=>sort('vas')}     className={sortCol==='vas'?'sorted':''} style={{width:90}}>VAs <SortIcon col="vas"/></th>
-                  <th onClick={()=>sort('identities')} className={sortCol==='identities'?'sorted':''}>Identities / Accounts <SortIcon col="identities"/></th>
-                  <th>Tenant URL</th>
-                  <th style={{width:160}}>Actions</th>
+                  <th onClick={()=>sort('source')}  className={sortCol==='source'?'sorted':''} {...getThProps('source')}>Source <SortIcon col="source"/><ResizeHandle col="source"/></th>
+                  <th onClick={()=>sort('client')}  className={sortCol==='client'?'sorted':''} {...getThProps('client')}>Client Name <SortIcon col="client"/><ResizeHandle col="client"/></th>
+                  <th onClick={()=>sort('type')}    className={sortCol==='type'?'sorted':''} {...getThProps('type')}>Type <SortIcon col="type"/><ResizeHandle col="type"/></th>
+                  <th onClick={()=>sort('health')}  className={sortCol==='health'?'sorted':''} {...getThProps('health')}>Health <SortIcon col="health"/><ResizeHandle col="health"/></th>
+                  <th onClick={()=>sort('vas')}     className={sortCol==='vas'?'sorted':''} {...getThProps('vas')}>VAs <SortIcon col="vas"/><ResizeHandle col="vas"/></th>
+                  <th onClick={()=>sort('identities')} className={sortCol==='identities'?'sorted':''} {...getThProps('identities')}>Identities / Accounts <SortIcon col="identities"/><ResizeHandle col="identities"/></th>
+                  <th {...getThProps('url')}>Tenant URL<ResizeHandle col="url"/></th>
+                  <th {...getThProps('actions')}>Actions</th>
                 </tr>
               </thead>
               <tbody>
