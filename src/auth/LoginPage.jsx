@@ -99,7 +99,7 @@ export default function LoginPage() {
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
               </svg>
             </div>
-            <h2 style={styles.cardTitle}>Sign in to MIH</h2>
+            <h2 style={styles.cardTitle}>Sign in to Managed Identity Hub</h2>
             <p style={styles.cardSub}>Multi-factor authentication required</p>
           </div>
 
