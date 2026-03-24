@@ -87,6 +87,7 @@ export function buildTenantRecord(form, validationResult) {
     accounts:      0,
     vas:           td.vaCount     || 0,
     vaUnhealthy:   td.vaUnhealthy || 0,
+    vaClusters:    td.vaClusters  || [],
     lastChecked:   'Just now',
     addedAt:       new Date().toISOString(),
     addedBy:       null, // Set by caller if auth context available

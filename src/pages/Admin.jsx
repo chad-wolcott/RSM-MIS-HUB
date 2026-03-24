@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   getUsers, addUser, updateUser, deleteUser, toggleUserStatus, resetUserStore,
-  ROLE_OPTIONS, AUTH_SOURCE_OPTIONS, IDP_LABEL,
+  ROLE_OPTIONS, AUTH_SOURCE_OPTIONS, IDP_LABEL, userHasPassword,
 } from '../lib/userStore'
+import { setUserPassword } from '../lib/localAuth'
 import { useResizableColumns } from '../lib/useResizableColumns.jsx'
 
 const TABS = ['General', 'Identity Provider', 'Users', 'Vault Config', 'Health Check', 'SIEM', 'System Health']
@@ -63,6 +64,11 @@ function UserForm({ initial = {}, onSave, onCancel, mode = 'add' }) {
   const [errors,  setErrors]  = useState({})
   const [saving,  setSaving]  = useState(false)
   const [saveErr, setSaveErr] = useState(null)
+  // Edit-mode password change (collapsed by default)
+  const [showPwChange, setShowPwChange] = useState(false)
+  const [newPw,        setNewPw]        = useState('')
+  const [confirmPw,    setConfirmPw]    = useState('')
+  const [pwErrors,     setPwErrors]     = useState({})
 
   const set = k => e => {
     const v = e.target.type === 'checkbox' ? e.target.checked : e.target.value
@@ -82,6 +88,17 @@ function UserForm({ initial = {}, onSave, onCancel, mode = 'add' }) {
       if (form.password && form.confirmPassword !== form.password) e.confirmPassword = 'Passwords do not match'
     }
     setErrors(e)
+    // Also validate edit-mode password change fields if visible
+    if (mode === 'edit' && showPwChange) {
+      const pe = {}
+      if (!newPw) pe.newPw = 'Password is required'
+      else if (newPw.length < 12) pe.newPw = 'Minimum 12 characters'
+      if (newPw && confirmPw !== newPw) pe.confirmPw = 'Passwords do not match'
+      setPwErrors(pe)
+      if (Object.keys(pe).length > 0) return false
+    } else {
+      setPwErrors({})
+    }
     return Object.keys(e).length === 0
   }
 
@@ -89,7 +106,7 @@ function UserForm({ initial = {}, onSave, onCancel, mode = 'add' }) {
     if (!validate()) return
     setSaving(true)
     try {
-      onSave({
+      const payload = {
         name:        form.name.trim(),
         email:       form.email.trim().toLowerCase(),
         role:        form.role,
@@ -98,7 +115,16 @@ function UserForm({ initial = {}, onSave, onCancel, mode = 'add' }) {
         status:      form.status,
         mfaRequired: form.mfaRequired,
         notes:       form.notes,
-      })
+      }
+      // Pass password to parent so it can hash+store via setUserPassword()
+      // _password is a transient field — never persisted directly
+      if (mode === 'add' && (form.authSource === 'local' || form.authSource === 'both')) {
+        payload._password = form.password
+      }
+      if (mode === 'edit' && showPwChange && newPw) {
+        payload._password = newPw
+      }
+      onSave(payload)
     } catch (err) { setSaveErr(err.message) }
     setSaving(false)
   }
@@ -194,6 +220,42 @@ function UserForm({ initial = {}, onSave, onCancel, mode = 'add' }) {
               {errors.confirmPassword && <p className="error-msg">{errors.confirmPassword}</p>}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Edit-mode: change password section (local/both accounts only) */}
+      {mode === 'edit' && (form.authSource === 'local' || form.authSource === 'both') && (
+        <div style={{ border:'1px solid var(--border)', borderRadius:'var(--radius)', overflow:'hidden' }}>
+          <button type="button"
+            onClick={() => { setShowPwChange(s => !s); setNewPw(''); setConfirmPw(''); setPwErrors({}) }}
+            style={{ width:'100%', padding:'10px 14px', background:'var(--bg-hover)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12.5, color:'var(--text-1)', fontWeight:500 }}>
+            <span style={{ display:'flex', alignItems:'center', gap:7 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width:13, height:13, color:'var(--amber)' }}><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              {showPwChange ? 'Cancel password change' : (initial.passwordHash ? 'Change password' : '⚠ Set password (required to log in)')}
+            </span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width:12, height:12, transform: showPwChange ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }}><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {showPwChange && (
+            <div style={{ padding:'14px', background:'var(--amber-dim)', borderTop:'1px solid rgba(240,168,33,0.25)' }}>
+              {!initial.passwordHash && (
+                <div style={{ fontSize:11.5, color:'var(--amber)', marginBottom:10, fontWeight:500 }}>
+                  This account has no password set — the user cannot log in until one is assigned.
+                </div>
+              )}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <label className="input-label">New Password *</label>
+                  <SecretInput value={newPw} onChange={e => { setNewPw(e.target.value); setPwErrors(p => { const n={...p}; delete n.newPw; return n }) }} placeholder="Min. 12 characters"/>
+                  {pwErrors.newPw && <p className="error-msg">{pwErrors.newPw}</p>}
+                </div>
+                <div>
+                  <label className="input-label">Confirm New Password *</label>
+                  <SecretInput value={confirmPw} onChange={e => { setConfirmPw(e.target.value); setPwErrors(p => { const n={...p}; delete n.confirmPw; return n }) }} placeholder="Repeat password"/>
+                  {pwErrors.confirmPw && <p className="error-msg">{pwErrors.confirmPw}</p>}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -322,10 +384,29 @@ function Users() {
     local:    users.filter(u => u.authSource==='local').length,
   }), [users])
 
-  const handleAdd  = p => { addUser(p, 'admin'); reload(); setMode('list'); showToast(`${p.name} created`) }
-  const handleEdit = p => {
-    try { updateUser(editing.id, p); reload(); setMode('list'); setEditing(null); showToast(`${p.name} updated`) }
-    catch (err) { throw err }
+  const handleAdd  = async p => {
+    const { _password, ...fields } = p
+    const newUser = addUser(fields, 'admin')
+    // Hash and store password for local/both accounts
+    if (_password && (fields.authSource === 'local' || fields.authSource === 'both')) {
+      await setUserPassword(newUser.id, _password)
+    }
+    reload()
+    setMode('list')
+    showToast(`${fields.name} created`)
+  }
+  const handleEdit = async p => {
+    try {
+      const { _password, ...fields } = p
+      updateUser(editing.id, fields)
+      if (_password && (fields.authSource === 'local' || fields.authSource === 'both')) {
+        await setUserPassword(editing.id, _password)
+      }
+      reload()
+      setMode('list')
+      setEditing(null)
+      showToast(`${fields.name} updated`)
+    } catch (err) { throw err }
   }
   const handleToggle = u => { toggleUserStatus(u.id); reload(); showToast(`${u.name} ${u.status==='active'?'disabled':'enabled'}`, u.status==='active'?'warn':'success') }
   const handleDelete = () => { deleteUser(deleting.id); reload(); setDeleting(null); showToast(`${deleting.name} removed`, 'warn') }

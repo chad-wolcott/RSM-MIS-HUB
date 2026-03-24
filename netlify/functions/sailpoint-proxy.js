@@ -468,10 +468,11 @@ exports.handler = async (event) => {
           const ic       = await getIdentityCount(tenantUrl, tok.accessToken)
           const vaInfo   = await getVaClusters(tenantUrl, tok.accessToken)
           result = {
-            success:      true,
+            success:       true,
             identityCount: ic.count,
             vaCount:       vaInfo.vaCount,
             vaUnhealthy:   vaInfo.unhealthyCount,
+            vaClusters:    vaInfo.clusters || [],
             refreshedAt:   new Date().toISOString(),
           }
         } catch (err) {

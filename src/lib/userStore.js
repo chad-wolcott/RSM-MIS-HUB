@@ -197,3 +197,9 @@ export const IDP_LABEL = {
   local: 'Local',
   both:  'Both',
 }
+
+// ── Password-set flag helpers (UI only — actual hash lives in localAuth.js) ──
+// Returns true if this user has a password hash stored
+export function userHasPassword(user) {
+  return !!(user?.passwordHash && user?.passwordSalt)
+}

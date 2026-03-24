@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 import { useMsal, useIsAuthenticated } from '@azure/msal-react'
 import { InteractionStatus } from '@azure/msal-browser'
 import { loginRequest, getRoleFromClaims, isEntraConfigured } from './msalConfig'
-import { validateLocalAdmin } from './localAdmin'
+import { validateLocalUser } from '../lib/localAuth'
 
 // ─────────────────────────────────────────────────────────────────────────────
 const AuthCtx = createContext(null)
@@ -73,20 +73,28 @@ export function AuthProvider({ children }) {
     setLocalAuthError(null)
     setLocalAuthLoading(true)
 
-    // Simulate network delay (remove when connecting to a real backend endpoint)
-    await new Promise(r => setTimeout(r, 700))
+    try {
+      // validateLocalUser checks the userStore for any active local/both account
+      // and verifies the SHA-256 hashed password stored alongside that record.
+      // Falls back to the hardcoded bootstrap credential for chad.wolcott until
+      // an explicit password is set via the Admin → Users panel.
+      const result = await validateLocalUser(email, password)
 
-    const result = validateLocalAdmin(email, password)
-
-    if (result) {
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(result))
-      setLocalUser(result)
+      if (result) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(result))
+        setLocalUser(result)
+        setLocalAuthLoading(false)
+        return { success: true }
+      } else {
+        setLocalAuthError('Invalid email or password.')
+        setLocalAuthLoading(false)
+        return { success: false, error: 'Invalid email or password.' }
+      }
+    } catch (err) {
+      console.error('[localAuth] Validation error:', err)
+      setLocalAuthError('Authentication error. Please try again.')
       setLocalAuthLoading(false)
-      return { success: true }
-    } else {
-      setLocalAuthError('Invalid email or password.')
-      setLocalAuthLoading(false)
-      return { success: false, error: 'Invalid email or password.' }
+      return { success: false, error: err.message }
     }
   }, [])
 

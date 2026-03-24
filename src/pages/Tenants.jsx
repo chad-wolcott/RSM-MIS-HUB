@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useResizableColumns } from '../lib/useResizableColumns.jsx'
 import { useNavigate } from 'react-router-dom'
 import { MOCK_TENANTS } from '../data/mock'
@@ -171,6 +171,7 @@ function EditTenantModal({ tenant, onSave, onClose }) {
         identities:    valResult.identityCount,
         vas:           valResult.vaCount,
         vaUnhealthy:   valResult.vaUnhealthy,
+        vaClusters:    valResult.vaClusters  || [],
         health:        'healthy',
         simulated:     false,
         lastChecked:   'Just now',
@@ -501,6 +502,113 @@ function DeleteModal({ tenant, onConfirm, onClose }) {
   )
 }
 
+
+// ── VA Cluster Popover ─────────────────────────────────────────────────────
+// Shows a popup when clicking the VA count cell.
+// Uses a portal-free fixed-position approach: measures the click target's
+// bounding rect and positions the panel absolutely on the page.
+function VAPopover({ tenant, onClose }) {
+  const ref = React.useRef(null)
+
+  // Close on outside click
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose()
+    }
+    // slight delay so the opening click doesn't immediately close
+    const t = setTimeout(() => document.addEventListener('mousedown', handler), 50)
+    return () => { clearTimeout(t); document.removeEventListener('mousedown', handler) }
+  }, [onClose])
+
+  const clusters = tenant.vaClusters || []
+  const total    = tenant.vas || clusters.length
+  const unhealthy = tenant.vaUnhealthy || clusters.filter(c => !['CONNECTED','HEALTHY','VALID','ACTIVE'].includes((c.status||'').toUpperCase())).length
+
+  const statusInfo = (s) => {
+    const up = (s || 'UNKNOWN').toUpperCase()
+    if (['CONNECTED','HEALTHY','VALID','ACTIVE'].includes(up))
+      return { label: up.charAt(0) + up.slice(1).toLowerCase(), color: 'var(--green)', bg: 'rgba(63,156,53,0.12)', dot: 'var(--green)' }
+    if (['WARNING','DEGRADED'].includes(up))
+      return { label: up.charAt(0) + up.slice(1).toLowerCase(), color: 'var(--amber)', bg: 'rgba(240,168,33,0.12)', dot: 'var(--amber)' }
+    if (['DISCONNECTED','OFFLINE','ERROR'].includes(up))
+      return { label: up.charAt(0) + up.slice(1).toLowerCase(), color: 'var(--red)', bg: 'rgba(232,68,68,0.12)', dot: 'var(--red)' }
+    return { label: s || 'Unknown', color: 'var(--text-3)', bg: 'var(--bg-hover)', dot: 'var(--text-3)' }
+  }
+
+  return (
+    <div ref={ref} style={{
+      position:    'fixed',
+      zIndex:      2000,
+      top:         '50%',
+      left:        '50%',
+      transform:   'translate(-50%, -50%)',
+      width:       320,
+      background:  'var(--bg-card)',
+      border:      '1px solid var(--border)',
+      borderRadius:'var(--radius-lg)',
+      boxShadow:   '0 8px 32px rgba(0,0,0,0.4)',
+      overflow:    'hidden',
+    }}>
+      {/* Header */}
+      <div style={{ padding:'12px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between', background:'var(--bg-panel)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width:14, height:14, color:'var(--accent)' }}>
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+          </svg>
+          <span style={{ fontSize:12.5, fontWeight:600, color:'var(--text-1)' }}>Virtual Appliances</span>
+          <span style={{ fontSize:11, color:'var(--text-3)' }}>— {tenant.client}</span>
+        </div>
+        <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--text-3)', cursor:'pointer', padding:4, display:'flex', borderRadius:4 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width:14, height:14 }}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      {/* Summary bar */}
+      <div style={{ display:'flex', gap:0, borderBottom:'1px solid var(--border)' }}>
+        {[
+          { label:'Total',     val:total,              color:'var(--accent)' },
+          { label:'Healthy',   val:total - unhealthy,  color:'var(--green)'  },
+          { label:'Unhealthy', val:unhealthy,           color: unhealthy > 0 ? 'var(--red)' : 'var(--text-3)' },
+        ].map((s,i) => (
+          <div key={s.label} style={{ flex:1, padding:'9px 0', textAlign:'center', borderRight: i < 2 ? '1px solid var(--border)' : 'none' }}>
+            <div style={{ fontFamily:'var(--font-head)', fontSize:18, fontWeight:700, color:s.color, lineHeight:1 }}>{s.val}</div>
+            <div style={{ fontSize:10, color:'var(--text-3)', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:3 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Cluster list */}
+      <div style={{ maxHeight:260, overflowY:'auto', padding:'6px 0' }}>
+        {clusters.length === 0 ? (
+          <div style={{ padding:'20px', textAlign:'center', fontSize:12.5, color:'var(--text-3)', fontStyle:'italic' }}>
+            {tenant.source === 'mock' ? 'Mock tenant — cluster details not available' : 'No VA cluster data retrieved yet. Refresh to load.'}
+          </div>
+        ) : clusters.map((c, i) => {
+          const si = statusInfo(c.status)
+          return (
+            <div key={c.id || i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 14px', borderBottom:'1px solid var(--border-subtle)' }}>
+              <span style={{ width:7, height:7, borderRadius:'50%', background:si.dot, flexShrink:0,
+                boxShadow: si.dot === 'var(--green)' ? '0 0 0 2px rgba(63,156,53,0.2)' : 'none' }}/>
+              <span style={{ flex:1, fontSize:12.5, color:'var(--text-1)', fontFamily:'var(--font-mono)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {c.name || c.id}
+              </span>
+              <span style={{ fontSize:11, fontWeight:600, padding:'2px 7px', borderRadius:20, background:si.bg, color:si.color, whiteSpace:'nowrap' }}>
+                {si.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding:'8px 14px', borderTop:'1px solid var(--border)', fontSize:11, color:'var(--text-3)', display:'flex', justifyContent:'space-between', alignItems:'center', background:'var(--bg-panel)' }}>
+        <span>{tenant.source === 'live' ? `Last refreshed: ${tenant.lastChecked || 'unknown'}` : 'Mock data'}</span>
+        <span style={{ fontSize:10, opacity:0.6 }}>ISC v2025 managed-clusters</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Tenants Page ─────────────────────────────────────────────────────────
 export default function Tenants() {
   const navigate = useNavigate()
@@ -519,6 +627,7 @@ export default function Tenants() {
   const [editing,     setEditing]     = useState(null)
   const [deleting,    setDeleting]    = useState(null)
   const [toast,       setToast]       = useState(null)
+  const [vaPopover,   setVaPopover]  = useState(null)
 
   // Per-row refresh state: { [tenantId]: 'refreshing' | 'done' | 'error' }
   const [refreshState, setRefreshState] = useState({})
@@ -603,6 +712,7 @@ export default function Tenants() {
           identities:  result.identityCount,
           vas:         result.vaCount,
           vaUnhealthy: result.vaUnhealthy,
+          vaClusters:  result.vaClusters  || [],
           health:      result.vaUnhealthy > 0 ? 'degraded' : 'healthy',
           lastChecked: 'Just now',
         })
@@ -647,9 +757,26 @@ export default function Tenants() {
     </span>
   )
 
-  const vaCell = (t) => t.vaUnhealthy > 0
-    ? <>{t.vas} <span style={{color:'var(--red)',fontSize:11}}>({t.vaUnhealthy} ⚠)</span></>
-    : t.vas ?? '—'
+  const vaCell = (t) => {
+    const count = t.vas ?? 0
+    const bad   = t.vaUnhealthy ?? 0
+    const hasClusters = (t.vaClusters && t.vaClusters.length > 0) || count > 0
+    const color = bad > 0 ? 'var(--red)' : count > 0 ? 'var(--green)' : 'var(--text-3)'
+    return (
+      <button onClick={() => setVaPopover(t)}
+        title={hasClusters ? 'Click to view VA cluster details' : 'No VA data — refresh to load'}
+        style={{
+          background:'none', border:'none', cursor: hasClusters ? 'pointer' : 'default',
+          padding:'2px 4px', borderRadius:4, display:'inline-flex', alignItems:'center', gap:4,
+          fontFamily:'var(--font-mono)', fontSize:12, color,
+          textDecoration: hasClusters ? 'underline dotted' : 'none', textUnderlineOffset:3,
+        }}>
+        {count > 0 ? count : '—'}
+        {bad > 0 && <span style={{color:'var(--red)',fontSize:10,marginLeft:1}}>⚠{bad}</span>}
+        {hasClusters && count > 0 && <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width:9,height:9,opacity:0.45,flexShrink:0}}><polyline points="6 9 12 15 18 9"/></svg>}
+      </button>
+    )
+  }
 
   const countCell = (t) => {
     const n = t.type === 'ISC' ? (t.identities ?? 0) : (t.accounts ?? 0)
@@ -754,7 +881,7 @@ export default function Tenants() {
                     </td>
                     <td><span className={`badge ${t.type==='ISC'?'badge-isc':'badge-pam'}`}>{t.type}</span></td>
                     <td>{healthBadge(t.health)}</td>
-                    <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{vaCell(t)}</td>
+                    <td style={{padding:'6px 6px'}}>{vaCell(t)}</td>
                     <td style={{fontFamily:'var(--font-mono)',fontSize:12}}>{countCell(t)}</td>
                     <td>
                       <div className="url-cell" onClick={() => copyUrl(t.url)} title={t.url}>
@@ -874,6 +1001,15 @@ export default function Tenants() {
             {toast.msg}
           </div>
         </div>
+      )}
+
+      {vaPopover && (
+        <>
+          <div onClick={() => setVaPopover(null)}
+            style={{ position:'fixed', inset:0, zIndex:1999, background:'rgba(0,0,0,0.35)', backdropFilter:'blur(1px)' }}
+          />
+          <VAPopover tenant={vaPopover} onClose={() => setVaPopover(null)} />
+        </>
       )}
     </>
   )
