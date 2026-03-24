@@ -226,50 +226,56 @@ async function getIdentityCount(tenantUrl, accessToken) {
 }
 
 // ── Action: get-va-clusters ───────────────────────────────────────────────────
-// v2025 API: GET /v2025/managed-clusters  (replaces /beta/cluster-configs)
-// X-SailPoint-Experimental: true required
+// Correct endpoint: GET /v3/managed-clusters  (stable, no experimental header)
+// No type filter — the API returns all clusters for the org; we filter VA types
+// locally.  Health comes from clientStatus on managed clients per cluster.
+//
+// ManagedCluster response shape:
+//   { id, name, type, clientStatus: { status: 'NORMAL'|'ERROR'|'WARNING'|'CONFIGURING' } }
 async function getVaClusters(tenantUrl, accessToken) {
   const apiBase = getApiBase(tenantUrl)
+  const headers = { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' }
 
-  const res = await httpRequest(`${apiBase}/v2025/managed-clusters?filters=type+eq+%22VA%22`, {
-    headers: {
-      Authorization:               `Bearer ${accessToken}`,
-      Accept:                      'application/json',
-      'X-SailPoint-Experimental': 'true',
-    },
+  // 1. List all managed clusters (VA + CCG + anything else)
+  const res = await httpRequest(`${apiBase}/v3/managed-clusters`, {
+    headers,
     timeout: 12000,
   })
 
-  if (res.status === 200) {
-    const clusters  = JSON.parse(res.body)
-    const vaCount   = clusters.length || 0
-    const unhealthy = clusters.filter(c =>
-      c.status && !['VALID','HEALTHY','ACTIVE','CONNECTED'].includes(c.status.toUpperCase())
-    ).length
-    return {
-      vaCount,
-      unhealthyCount: unhealthy,
-      clusters: clusters.map(c => ({ name: c.name, id: c.id, status: c.status, type: c.type })),
-    }
+  if (res.status !== 200) {
+    // Non-fatal — return empty so validation doesn't hard-fail
+    console.warn(`[getVaClusters] /v3/managed-clusters returned HTTP ${res.status}`)
+    return { vaCount: 0, unhealthyCount: 0, clusters: [], note: `HTTP ${res.status}` }
   }
 
-  // Fallback: beta/cluster-configs (older tenants)
-  const res2 = await httpRequest(`${apiBase}/beta/cluster-configs?type=VA`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-    timeout: 10000,
+  const allClusters = JSON.parse(res.body)
+
+  // 2. Filter to VA type clusters only
+  //    type can be 'VA', 'va', or absent (older tenants include all under the same endpoint)
+  const vaClusters = allClusters.filter(c => {
+    if (!c.type) return true  // include unknown type — likely VA
+    return ['VA', 'va'].includes(c.type)
   })
 
-  if (res2.status === 200) {
-    const clusters  = JSON.parse(res2.body)
-    const vaCount   = clusters.length || 0
-    const unhealthy = clusters.filter(c =>
-      c.status && !['VALID','HEALTHY','ACTIVE'].includes(c.status.toUpperCase())
-    ).length
-    return { vaCount, unhealthyCount: unhealthy, clusters: clusters.map(c => ({ name: c.name, status: c.status })) }
-  }
+  // 3. Derive health from clientStatus if present, otherwise assume healthy
+  //    Healthy statuses: NORMAL
+  //    Unhealthy:        ERROR, WARNING, CONFIGURING, DISCONNECTED
+  const HEALTHY = new Set(['NORMAL'])
+  const enriched = vaClusters.map(c => {
+    const rawStatus = c.clientStatus?.status || 'UNKNOWN'
+    const healthy   = HEALTHY.has(rawStatus.toUpperCase())
+    return {
+      id:     c.id,
+      name:   c.name || c.id,
+      type:   c.type || 'VA',
+      status: healthy ? 'CONNECTED' : rawStatus,
+    }
+  })
 
-  // Non-fatal — VA info optional
-  return { vaCount: 0, unhealthyCount: 0, clusters: [], note: `v2025 HTTP ${res.status} / beta HTTP ${res2.status}` }
+  const vaCount   = enriched.length
+  const unhealthy = enriched.filter(c => c.status !== 'CONNECTED').length
+
+  return { vaCount, unhealthyCount: unhealthy, clusters: enriched }
 }
 
 // ── Action: full-validation ───────────────────────────────────────────────────
