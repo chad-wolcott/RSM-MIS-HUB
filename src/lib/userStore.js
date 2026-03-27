@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // RSM Defense MIH — User Store
 //
-// Manages MIH platform users in localStorage.  This is a prototype store —
-// in production, user records live in a backend database.  Local users
+// Manages MIH platform users.  When the Azure Functions backend is reachable,
+// operations persist to Cosmos DB via the REST API.  Falls back to localStorage
+// for offline / local dev.  Local users
 // (authSource: 'local') are created here and validate against localAdmin.js.
 // Entra users are auto-provisioned on first login; their records here act as
 // overrides (role, status, allowedIdp) that take precedence over claims.
@@ -24,6 +25,30 @@
 //   createdBy:   string | null     email of admin who created this record
 //   source:      'local-store' | 'mock'  so the UI can tell seeded from managed
 // }
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { usersApi } from './apiClient'
+
+// ── Backend-persisted operations ──────────────────────────────────────────────
+
+export async function fetchUsersFromApi() {
+  return usersApi.list()
+}
+
+export async function addUserToApi(fields) {
+  return usersApi.create(fields)
+}
+
+export async function updateUserInApi(id, patch) {
+  return usersApi.update(id, patch)
+}
+
+export async function removeUserFromApi(id) {
+  return usersApi.remove(id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy localStorage operations — kept for offline / dev fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'mih-users'

@@ -14,4 +14,14 @@ export default defineConfig({
       },
     },
   },
+  server: {
+    // Proxy /api/* to the Azure Functions local emulator during development.
+    // Run: cd api && func start   (in a separate terminal)
+    proxy: {
+      '/api': {
+        target: 'http://localhost:7071',
+        changeOrigin: true,
+      },
+    },
+  },
 })

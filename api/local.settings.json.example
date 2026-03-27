@@ -1,0 +1,24 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+
+    "COSMOS_ENDPOINT": "https://<account-name>.documents.azure.com:443/",
+    "COSMOS_KEY": "<primary-or-secondary-key>",
+    "COSMOS_DATABASE": "mih",
+
+    "KEYVAULT_URI": "https://<vault-name>.vault.azure.net/",
+
+    "ENTRA_TENANT_ID": "<your-azure-tenant-id>",
+    "ENTRA_CLIENT_ID": "<your-app-registration-client-id>",
+
+    "APPINSIGHTS_INSTRUMENTATIONKEY": "<application-insights-instrumentation-key>",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=<key>;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/"
+  },
+  "Host": {
+    "LocalHttpPort": 7071,
+    "CORS": "http://localhost:5173",
+    "CORSCredentials": true
+  }
+}

@@ -123,6 +123,25 @@ export function AuthProvider({ children }) {
     })
   }, [instance])
 
+  // ── Acquire and cache access token for API calls ──────────────────────────
+  // Stores the token in sessionStorage so apiClient.js can attach it as a
+  // Bearer header without requiring React context in non-component code.
+  useEffect(() => {
+    if (!msalAuthenticated || accounts.length === 0) {
+      sessionStorage.removeItem('mih-access-token')
+      return
+    }
+    instance.acquireTokenSilent({
+      ...loginRequest,
+      account: accounts[0],
+    }).then(result => {
+      sessionStorage.setItem('mih-access-token', result.accessToken)
+    }).catch(err => {
+      console.warn('[AuthContext] Silent token acquisition failed:', err.message)
+      sessionStorage.removeItem('mih-access-token')
+    })
+  }, [msalAuthenticated, accounts, instance])
+
   const entraConfigured = isEntraConfigured()
   const msalLoading = inProgress !== InteractionStatus.None
 

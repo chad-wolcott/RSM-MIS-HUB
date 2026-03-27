@@ -1,7 +1,37 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // RSM Defense MIH — Tenant Store
-// Manages live (real) tenants in localStorage, separate from mock data.
-// The Tenants page merges both sources and tags each row with its origin.
+//
+// Manages live (real) tenants.  When the Azure Functions backend is reachable
+// (VITE_API_BASE is set or /api/health responds), data is persisted to Cosmos
+// DB via the REST API.  Falls back to localStorage for offline / local dev
+// without the Functions emulator running.
+//
+// The Tenants page merges API tenants + mock data and tags each row with its
+// origin ('live' | 'mock').
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { tenantsApi } from './apiClient'
+
+// ── Backend-persisted operations ──────────────────────────────────────────────
+
+export async function fetchTenantsFromApi() {
+  return tenantsApi.list()
+}
+
+export async function addTenantToApi(tenant) {
+  return tenantsApi.create(tenant)
+}
+
+export async function updateTenantInApi(id, patch) {
+  return tenantsApi.update(id, patch)
+}
+
+export async function removeTenantFromApi(id) {
+  return tenantsApi.remove(id)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy localStorage operations — kept for offline / dev fallback
 // ─────────────────────────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'mih-live-tenants'

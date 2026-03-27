@@ -1,16 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // RSM Defense MIH — SailPoint ISC API Client
-// All calls route through /.netlify/functions/sailpoint-proxy to avoid CORS.
+// All calls route through /api/sailpoint-proxy (Azure Function) to avoid CORS.
+// In dev, Vite proxies /api/* to http://localhost:7071 (Azure Functions emulator).
 // ─────────────────────────────────────────────────────────────────────────────
 
-// In dev the Netlify CLI serves functions at the same origin.
-// In production the function is on the same Netlify domain.
-const PROXY_URL = '/.netlify/functions/sailpoint-proxy'
+const PROXY_URL = '/api/sailpoint-proxy'
 
 async function callProxy(action, tenantUrl, extra = {}) {
+  const headers = { 'Content-Type': 'application/json' }
+
+  // Attach Bearer token from sessionStorage if present (set by AuthContext)
+  const token = sessionStorage.getItem('mih-access-token')
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
   const res = await fetch(PROXY_URL, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body:    JSON.stringify({ action, tenantUrl, ...extra }),
   })
 
@@ -62,18 +67,13 @@ export function deriveApiBase(tenantUrl) {
 }
 
 /**
- * Check whether we're running in an environment where the Netlify
- * function is available. In local dev without the Netlify CLI this
+ * Check whether we're running in an environment where the Azure Function
+ * proxy is available. In local dev without `func start` running this
  * will fail; we surface a clear message rather than a confusing error.
  */
 export async function isProxyAvailable() {
   try {
-    const res = await fetch(PROXY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'test-connectivity', tenantUrl: 'https://example.identitynow.com' }),
-      signal: AbortSignal.timeout(4000),
-    })
+    const res = await fetch('/api/health', { signal: AbortSignal.timeout(4000) })
     return res.status < 500
   } catch {
     return false
